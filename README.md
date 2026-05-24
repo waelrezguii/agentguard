@@ -2,28 +2,26 @@
 
 **Your LangChain agent has a blast radius. AgentGuard measures it.**
 
-When a developer writes `tools=[github_tool, db_tool, slack_tool]` in a LangChain agent, nobody checks whether those tool scopes exceed what the agent's job requires. AgentGuard does.
+[![CI](https://github.com/waelrezguii/agentguard/actions/workflows/ci.yml/badge.svg)](https://github.com/waelrezguii/agentguard/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://pypi.org/project/agentguard/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/agentguard)](https://pypi.org/project/agentguard/)
+
+When a developer writes `tools=[github_tool, db_tool, slack_tool]` in a LangChain agent, nobody checks whether those tool scopes exceed what the agent's job requires. AgentGuard does — before the agent ships.
 
 ```bash
 pip install agentguard
 agentguard scan ./my_agent.py
 ```
 
----
-
-## What it does
-
-AgentGuard reads your LangChain agent file, extracts the tools your agent has access to, compares their permission scopes against what the agent's task actually requires, and outputs a risk score with a remediation list.
-
-One command. No account. No API key. No configuration.
+No account. No API key. No configuration.
 
 ---
 
 ## Example
 
-Given this agent:
-
 ```python
+# my_agent.py
 from langchain.agents import initialize_agent
 from langchain_community.tools import GitHubTool, SlackTool, SQLDatabaseTool
 
@@ -36,21 +34,45 @@ agent = initialize_agent(
 )
 ```
 
-Running `agentguard scan ./my_agent.py` outputs:
-
 ```
-AgentGuard Risk Score: 87/100 — HIGH
+$ agentguard scan ./my_agent.py
+
+AgentGuard — AI Agent Permission Scanner
+File: my_agent.py
+
+Risk Score: 100/100 — CRITICAL
+
+Task: "You are an assistant that summarizes pull requests."
+Required actions inferred: read
 
 3 over-permissioned tools found:
 
-  GitHubTool        has WRITE access — task only requires READ
-  SlackTool         has DELETE scope — task never sends or deletes messages
-  SQLDatabaseTool   has full schema access — task only needs SELECT
+  SQLDatabaseTool
+  SQL database access
+    → insert scope   medium blast radius
+    → update scope   medium blast radius
+    → delete scope   high blast radius
+    → schema scope   critical blast radius
+  Fix: Add read_only=True and restrict to specific tables
+
+  GitHubTool
+  GitHub repository access
+    → write scope   medium blast radius
+    → admin scope   critical blast radius
+  Fix: Use read_only=True or a scoped token with only repo:read
+
+  SlackTool
+  Slack workspace access
+    → write scope   medium blast radius
+    → delete scope  high blast radius
+  Fix: Use channels:read,channels:history scopes only if agent only reads
 
 Remediation:
-  1. Replace GitHubTool with GitHubReadOnlyTool
-  2. Remove SlackTool — not required for PR summarization
-  3. Add read_only=True to SQLDatabaseTool
+  1. Add read_only=True and restrict to specific tables
+  2. Use read_only=True or a scoped token with only repo:read
+  3. Use channels:read,channels:history scopes only if agent only reads
+
+CRITICAL: This agent could cause irreversible damage if compromised or manipulated.
 ```
 
 ---
@@ -59,12 +81,14 @@ Remediation:
 
 Every existing AI agent security tool operates at runtime — after permissions are granted, after the agent is deployed, after the blast radius is already set.
 
-AgentGuard operates at definition time. Before the agent ships.
+AgentGuard operates at **definition time**. Before the agent ships.
 
-- **Aembit** manages the secret at runtime
-- **Astrix** discovers the secret in your SaaS estate
-- **LangSmith** logs what the secret was used for
-- **AgentGuard** tells you the secret should never have had that scope
+| Tool | When it acts | What it covers |
+|------|-------------|----------------|
+| **AgentGuard** | Before deployment | Permission scope audit |
+| Aembit | Runtime | Secret management |
+| Astrix | Discovery | SaaS estate visibility |
+| LangSmith | Runtime | Logging and tracing |
 
 ---
 
@@ -72,34 +96,65 @@ AgentGuard operates at definition time. Before the agent ships.
 
 | Tool | Permissions detected |
 |------|---------------------|
-| GitHubTool | read, write, admin |
-| SlackTool | read, write, delete |
-| SQLDatabaseTool | select, insert, update, delete, schema |
-| GmailTool | read, send, delete |
-| FileSystemTool | read, write, delete |
-| PythonREPLTool | exec |
-| ShellTool | exec |
-| RequestsTool | get, post, put, delete |
-| NotionTool | read, write |
-| JiraTool | read, write, admin |
+| `GitHubTool` | read, write, admin |
+| `SlackTool` | read, write, delete |
+| `SQLDatabaseTool` | select, insert, update, delete, schema |
+| `GmailTool` | read, send, delete |
+| `FileSystemTool` | read, write, delete |
+| `PythonREPLTool` | exec |
+| `ShellTool` | exec |
+| `RequestsTool` | get, post, put, delete |
+| `NotionTool` | read, write |
+| `JiraTool` | read, write, admin |
+
+Missing a tool you use? [Add it in under 10 minutes →](CONTRIBUTING.md)
 
 ---
 
-## Scoring
+## How it works
 
-Risk score is calculated from two factors:
+1. **Parses** the agent file (AST + regex fallback) to extract the tool list and task description
+2. **Infers** required permission scopes from the task description keywords
+3. **Compares** tool scopes against required scopes to find excess permissions
+4. **Scores** excess permissions by blast radius — exec/admin scope counts more than read scope
 
-1. **Excess permissions** — scopes the tool has that the agent's task doesn't require
-2. **Blast radius** — how destructive those excess permissions could be if the agent were compromised or manipulated
-
-A `ShellTool` with exec access on an agent whose job is to read emails scores higher than a `RequestsTool` with GET-only access. Destructive permissions weigh more than read permissions.
+### Scoring
 
 | Score | Level | Meaning |
 |-------|-------|---------|
-| 0–25 | LOW | Minor excess permissions. Low priority. |
-| 26–50 | MEDIUM | Notable excess. Review before deploying to production. |
-| 51–75 | HIGH | Significant over-permission. Fix before shipping. |
-| 76–100 | CRITICAL | Agent has permissions that could cause irreversible damage if compromised. |
+| 0–25 | LOW | Minor excess permissions |
+| 26–50 | MEDIUM | Notable excess — review before production |
+| 51–75 | HIGH | Significant over-permission — fix before shipping |
+| 76–100 | CRITICAL | Could cause irreversible damage if compromised |
+
+---
+
+## CLI reference
+
+```bash
+# Basic scan
+agentguard scan ./my_agent.py
+
+# JSON output (for programmatic use)
+agentguard scan ./my_agent.py --json
+
+# CI/CD integration — exit 1 if risk is HIGH or above
+agentguard scan ./my_agent.py --fail-on HIGH
+
+# No color (for log files)
+agentguard scan ./my_agent.py --no-color
+```
+
+### CI/CD integration
+
+Add to your GitHub Actions workflow:
+
+```yaml
+- name: Audit agent permissions
+  run: |
+    pip install agentguard
+    agentguard scan ./my_agent.py --fail-on HIGH
+```
 
 ---
 
@@ -117,17 +172,19 @@ Those tools exist. AgentGuard does one thing: audits your agent's permission sur
 
 ## Roadmap
 
-- v0.1 — LangChain support, 10 tools, CLI
-- v0.2 — CrewAI support
-- v0.3 — CI/CD integration (GitHub Actions)
-- v0.4 — MCP server scanning
-- v1.0 — Custom tool definitions, team reports
+- [x] v0.1 — LangChain support, 10 tools, CLI, CI badge
+- [ ] v0.2 — CrewAI support
+- [ ] v0.3 — GitHub Actions native action
+- [ ] v0.4 — MCP server scanning
+- [ ] v1.0 — Custom tool definitions, team reports
 
 ---
 
 ## Contributing
 
-AgentGuard is open source. If you build LangChain agents and have hit this problem, open an issue or a PR.
+The fastest contribution: add a tool to the database. It takes less than 10 minutes.
+
+[See CONTRIBUTING.md →](CONTRIBUTING.md)
 
 ---
 
