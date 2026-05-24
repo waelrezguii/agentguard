@@ -158,7 +158,12 @@ DANGEROUS_PATH_PATTERNS = [
     ("/root", "root"),
     # Unix root
     ("/", "root"),
-    # Windows drives
+    # Windows home directories (C:\Users\<name> or D:\Users\<name>)
+    ("C:\\Users\\", "home_dir"),
+    ("C:/Users/", "home_dir"),
+    ("D:\\Users\\", "home_dir"),
+    ("D:/Users/", "home_dir"),
+    # Windows root drives
     ("C:\\", "root"),
     ("C:/", "root"),
     ("D:\\", "root"),

@@ -11,6 +11,10 @@ import sys
 import json
 import argparse
 
+# Ensure Unicode output works on Windows (PowerShell / cmd default to cp1252)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from agentguard.mcp_parser import parse_mcp_config, find_mcp_configs
 from agentguard.mcp_analyzer import analyze_mcp
 from agentguard.reporter import format_mcp_report
