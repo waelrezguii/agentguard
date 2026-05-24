@@ -3,9 +3,8 @@
 **Your LangChain agent has a blast radius. AgentGuard measures it.**
 
 [![CI](https://github.com/waelrezguii/agentguard/actions/workflows/ci.yml/badge.svg)](https://github.com/waelrezguii/agentguard/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://pypi.org/project/agentguard/)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/waelrezguii/agentguard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/agentguard)](https://pypi.org/project/agentguard/)
 
 When a developer writes `tools=[github_tool, db_tool, slack_tool]` in a LangChain agent, nobody checks whether those tool scopes exceed what the agent's job requires. AgentGuard does — before the agent ships.
 
