@@ -1,0 +1,48 @@
+name: AgentGuard
+description: Audit AI agent tool permissions on pull requests — comments when blast radius changes
+author: waelrezguii
+
+inputs:
+  github-token:
+    description: GitHub token for posting PR comments
+    required: true
+  agent-paths:
+    description: Glob pattern for agent files to scan (relative to repo root)
+    required: false
+    default: "**/*.py"
+  fail-on-escalation:
+    description: Exit with code 1 if any agent's risk level increased
+    required: false
+    default: "false"
+  base-ref:
+    description: Base branch ref to compare against
+    required: false
+    default: ${{ github.base_ref }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install AgentGuard
+      shell: bash
+      run: pip install agentguard --quiet
+
+    - name: Run AgentGuard diff
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        AGENT_PATHS: ${{ inputs.agent-paths }}
+        FAIL_ON_ESCALATION: ${{ inputs.fail-on-escalation }}
+        BASE_REF: ${{ inputs.base-ref }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: python ${{ github.action_path }}/entrypoint.py
+
+branding:
+  icon: shield
+  color: red

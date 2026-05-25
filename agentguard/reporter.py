@@ -221,6 +221,147 @@ def format_mcp_report(result: dict, filepath: str, app: str = None, no_color: bo
     return "\n".join(lines)
 
 
+def format_diff_comment(diff: dict, filepath: str) -> str:
+    """
+    Format a diff result as a GitHub PR comment (Markdown).
+    Designed to be posted via the GitHub API.
+    """
+    lines = []
+
+    level_emoji = {
+        "LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🔴", "CRITICAL": "🚨"
+    }
+
+    if not diff["changed"]:
+        lines.append("### 🛡️ AgentGuard — No Permission Changes")
+        lines.append("")
+        lines.append(f"**`{filepath}`** — no tool permission changes detected.")
+        lines.append("")
+        lines.append(f"Risk score unchanged: **{diff['score_before']}/100 — {diff['level_before']}**")
+        return "\n".join(lines)
+
+    # Header
+    if diff["elevated"]:
+        lines.append("### 🚨 AgentGuard — Permission Escalation Detected")
+    else:
+        lines.append("### 🛡️ AgentGuard — Permission Changes Detected")
+
+    lines.append("")
+    lines.append(f"**File:** `{filepath}`")
+    lines.append("")
+
+    # Score change
+    before_emoji = level_emoji.get(diff["level_before"], "")
+    after_emoji  = level_emoji.get(diff["level_after"], "")
+    lines.append(
+        f"| | Risk Score | Level |"
+    )
+    lines.append(f"|---|---|---|")
+    lines.append(f"| **Before** | {diff['score_before']}/100 | {before_emoji} {diff['level_before']} |")
+    lines.append(f"| **After**  | {diff['score_after']}/100  | {after_emoji} {diff['level_after']} |")
+    lines.append("")
+
+    # Tools added
+    if diff["tools_added"]:
+        lines.append(f"#### ⚠️ Tools Added ({len(diff['tools_added'])})")
+        lines.append("")
+        for finding in diff["tools_added"]:
+            blast = finding["max_blast"]
+            blast_label = _blast_label(blast)
+            lines.append(f"**`{finding['tool']}`** — {finding['description']}")
+            lines.append(f"- Blast radius: **{blast}/4 — {blast_label}**")
+            for scope_info in finding["excess_scopes"]:
+                lines.append(f"- Grants `{scope_info['scope']}` scope")
+            lines.append(f"- 💡 Fix: {finding['safe_alternative']}")
+            lines.append("")
+
+    # Tools removed
+    if diff["tools_removed"]:
+        lines.append(f"#### ✅ Tools Removed ({len(diff['tools_removed'])})")
+        lines.append("")
+        for tool in diff["tools_removed"]:
+            lines.append(f"- `{tool}` removed — blast radius reduced")
+        lines.append("")
+
+    # Footer
+    if diff["elevated"]:
+        lines.append("---")
+        lines.append(
+            "> ⚠️ **This PR increases the agent's permission surface.** "
+            "Review the added tools carefully before merging. "
+            "If these permissions are intentional, acknowledge this comment."
+        )
+    else:
+        lines.append("---")
+        lines.append(
+            "> 🛡️ Powered by [AgentGuard](https://github.com/waelrezguii/agentguard) — "
+            "AI agent permission auditing"
+        )
+
+    return "\n".join(lines)
+
+
+def format_diff_report(diff: dict, filepath: str, no_color: bool = False) -> str:
+    """Format a diff result for CLI output."""
+
+    def color(text, code):
+        return text if no_color else f"{code}{text}{RESET}"
+
+    def bold(text):
+        return text if no_color else f"{BOLD}{text}{RESET}"
+
+    def dim(text):
+        return text if no_color else f"{DIM}{text}{RESET}"
+
+    lines = []
+    lines.append("")
+    lines.append(bold("AgentGuard") + " — Permission Diff")
+    lines.append(dim(f"File: {filepath}"))
+    lines.append("")
+
+    if not diff["changed"]:
+        lines.append(color("✓ No permission changes detected.", "\033[92m"))
+        lines.append("")
+        return "\n".join(lines)
+
+    # Score change
+    level_color_before = LEVEL_COLORS.get(diff["level_before"], "")
+    level_color_after  = LEVEL_COLORS.get(diff["level_after"], "")
+    sb = diff["score_before"]
+    sa = diff["score_after"]
+    lb = diff["level_before"]
+    la = diff["level_after"]
+    lines.append(f"  Before: {color(f'{sb}/100 — {lb}', level_color_before) if not no_color else f'{sb}/100 — {lb}'}")
+    lines.append(f"  After:  {color(f'{sa}/100 — {la}', level_color_after) if not no_color else f'{sa}/100 — {la}'}")
+    lines.append("")
+
+    if diff["tools_added"]:
+        lines.append(bold(f"Tools added ({len(diff['tools_added'])}):"))
+        for finding in diff["tools_added"]:
+            blast_color = _blast_color(finding["max_blast"])
+            lines.append(f"  + {color(finding['tool'], blast_color) if not no_color else finding['tool']}")
+            lines.append(dim(f"    {finding['description']}"))
+            lines.append(dim(f"    Blast radius: {finding['max_blast']}/4 — {_blast_label(finding['max_blast'])}"))
+            lines.append(dim(f"    Fix: {finding['safe_alternative']}"))
+            lines.append("")
+
+    if diff["tools_removed"]:
+        lines.append(bold(f"Tools removed ({len(diff['tools_removed'])}):"))
+        for tool in diff["tools_removed"]:
+            lines.append(color(f"  - {tool}", "\033[92m") if not no_color else f"  - {tool}")
+        lines.append("")
+
+    if diff["elevated"]:
+        lines.append(color(
+            "⚠ Risk elevated. Review added tools before merging.", "\033[91m"
+        ))
+    else:
+        lines.append(color("✓ Risk not elevated.", "\033[92m"))
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _blast_label(weight: int) -> str:
     labels = {1: "low blast radius", 2: "medium blast radius", 3: "high blast radius", 4: "critical blast radius"}
     return labels.get(weight, "unknown")

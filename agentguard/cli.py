@@ -21,7 +21,8 @@ from agentguard.reporter import format_mcp_report
 
 from agentguard.parser import parse_agent_file
 from agentguard.analyzer import analyze
-from agentguard.reporter import format_report
+from agentguard.reporter import format_report, format_diff_report
+from agentguard.differ import diff_files
 
 
 def main():
@@ -64,12 +65,26 @@ def main():
         help="Exit with code 1 if risk level is at or above this threshold",
     )
 
+    # ── diff ──────────────────────────────────────────────────────────────────
+    diff_parser = subparsers.add_parser("diff", help="Diff two versions of an agent file")
+    diff_parser.add_argument("base", help="Base version of the agent file")
+    diff_parser.add_argument("head", help="New version of the agent file")
+    diff_parser.add_argument("--no-color", action="store_true", help="Disable colored output")
+    diff_parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    diff_parser.add_argument(
+        "--fail-on-escalation",
+        action="store_true",
+        help="Exit with code 1 if risk level increased",
+    )
+
     args = parser.parse_args()
 
     if args.command == "scan-mcp":
         _run_scan_mcp(args)
     elif args.command == "scan":
         _run_scan(args)
+    elif args.command == "diff":
+        _run_diff(args)
     else:
         parser.print_help()
         sys.exit(0)
@@ -154,6 +169,27 @@ def _run_scan(args):
         result_idx = levels.index(result["level"])
         if result_idx >= threshold_idx:
             sys.exit(1)
+
+
+def _run_diff(args):
+    try:
+        diff = diff_files(args.base, args.head)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    if args.json:
+        output = {k: v for k, v in diff.items()}
+        print(json.dumps(output, indent=2))
+    else:
+        report = format_diff_report(diff, args.head, no_color=args.no_color)
+        print(report)
+
+    if args.fail_on_escalation and diff["elevated"]:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

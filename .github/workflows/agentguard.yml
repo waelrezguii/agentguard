@@ -1,0 +1,23 @@
+name: AgentGuard Permission Audit
+
+on:
+  pull_request:
+    paths:
+      - "**/*.py"
+
+jobs:
+  agentguard:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: waelrezguii/agentguard@v0.3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-escalation: "true"
