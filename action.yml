@@ -1,4 +1,4 @@
-name: AgentGuard
+name: AgentGuard Permission Audit
 description: Audit AI agent tool permissions on pull requests — comments when blast radius changes
 author: waelrezguii
 
